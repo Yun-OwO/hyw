@@ -1,10 +1,10 @@
-// Phaser游戏配置
+// Phaser game configuration
 const config = {
     type: Phaser.AUTO,
     parent: "game-container",
     width: lib.resolution.width,
     height: lib.resolution.height,
-    backgroundColor: "#000000", // 纯黑色背景
+    backgroundColor: "#000000",
     scene: {
         preload: preload,
         create: create,
@@ -17,47 +17,737 @@ const config = {
             debug: false
         }
     },
-
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
         parent: "game-container",
         autoRound: true
     },
-
     render: {
         pixelArt: true,
         antialias: false
     },
-
     resolution: devicePixelRatio
 };
 
-// 创建游戏实例
 let game = new Phaser.Game(config);
-
-// 游戏变量
 let timer = 0;
 let DB = {
     sprites: [],
     isDragging: false,
     dragStartPos: { x: 0, y: 0 },
-    gridSize: 144, // 网格尺寸
-    gridCols: 16, // 网格列数
-    gridRows: 6, // 网格行数（修正为9，以匹配计算）
-    worldWidth: 0, // 物理世界宽度
-    worldHeight: 0, // 物理世界高度（修正为gridRows）
-    gridOffsetX: 0, // 网格水平偏移量（居中）
-    gridOffsetY: 0 // 网格垂直偏移量（居中）
+    gridSize: 144,
+    gridCols: 16,
+    gridRows: 6,
+    worldWidth: 0,
+    worldHeight: 0,
+    gridOffsetX: 0,
+    gridOffsetY: 0
 };
 
-// 预加载资源
+const GamePhase = {
+    IDLE: "IDLE",
+    PREP: "PREP",
+    BATTLE: "BATTLE",
+    RESOLVE: "RESOLVE",
+    GAMEOVER: "GAMEOVER"
+};
+
+const state = {
+    phase: GamePhase.IDLE,
+    round: 1,
+    gold: 5,
+    dp: 3,
+    hp: 10,
+    shopLevel: 1,
+    shopItems: [],
+    hand: [],
+    selectedHandIndex: null,
+    deployed: [],
+    currentStrategy: null,
+    battleData: {
+        waveIndex: 0,
+        activeEnemies: [],
+        slowMultiplier: 1,
+        atkMultiplier: 1
+    },
+    pendingEquips: []
+};
+
+const ui = {
+    gold: null,
+    dp: null,
+    hp: null,
+    round: null,
+    phaseButton: null,
+    shopBody: null,
+    shopNote: null,
+    shopRefresh: null,
+    shopUpgrade: null,
+    handPanel: null,
+    covenantBar: null,
+    strategyPanel: null,
+    strategyOptions: null,
+    resultPanel: null,
+    resultText: null,
+    resultButton: null,
+    shopPanel: null
+};
+
+function getOperatorDef(id, tier = 1) {
+    const base = lib.config.operators.find(op => op.id === id && op.tier === 1);
+    if (!base) {
+        return null;
+    }
+    if (tier === 1) {
+        return { ...base };
+    }
+    return {
+        ...base,
+        tier: 2,
+        name: `${base.name} Elite`,
+        atk: Math.round(base.atk * 1.45),
+        def: Math.round(base.def * 1.35),
+        hp: Math.round(base.hp * 1.5),
+        atkSpd: Math.max(700, Math.round(base.atkSpd * 0.85)),
+        costGold: Math.round(base.costGold * 2.4),
+        costDP: Math.max(2, Math.round(base.costDP * 1.2))
+    };
+}
+
+function getShopItem(id) {
+    const operator = lib.config.operators.find(op => op.id === id);
+    if (operator) {
+        return { ...operator, type: "operator" };
+    }
+    const equip = lib.config.equips.find(item => item.id === id);
+    if (equip) {
+        return { ...equip };
+    }
+    const spell = lib.config.spells.find(item => item.id === id);
+    if (spell) {
+        return { ...spell };
+    }
+    return null;
+}
+
+function getCellCenter(col, row) {
+    return {
+        x: DB.gridOffsetX + col * DB.gridSize + DB.gridSize / 2,
+        y: DB.gridOffsetY + row * DB.gridSize + DB.gridSize / 2
+    };
+}
+
+function setPhase(newPhase) {
+    state.phase = newPhase;
+    updatePhaseUI();
+}
+
+function buildStatusText() {
+    if (!ui.gold || !ui.dp || !ui.hp || !ui.round) {
+        return;
+    }
+    ui.gold.textContent = `★ ${state.gold}`;
+    ui.dp.textContent = `DP ${state.dp}`;
+    ui.hp.textContent = `HP ${state.hp}`;
+    ui.round.textContent = `Round ${state.round}`;
+}
+
+function updatePhaseUI() {
+    if (!ui.phaseButton || !ui.shopPanel) {
+        return;
+    }
+    ui.phaseButton.disabled = false;
+    switch (state.phase) {
+        case GamePhase.PREP:
+            ui.phaseButton.textContent = "Begin Defense";
+            ui.phaseButton.disabled = state.deployed.length === 0;
+            ui.shopPanel.setAttribute("aria-hidden", "false");
+            break;
+        case GamePhase.BATTLE:
+            ui.phaseButton.textContent = "In Battle";
+            ui.phaseButton.disabled = true;
+            ui.shopPanel.setAttribute("aria-hidden", "true");
+            break;
+        case GamePhase.RESOLVE:
+            ui.phaseButton.textContent = "Resolving";
+            ui.phaseButton.disabled = true;
+            break;
+        case GamePhase.GAMEOVER:
+            ui.phaseButton.textContent = "Restart";
+            ui.phaseButton.disabled = false;
+            ui.shopPanel.setAttribute("aria-hidden", "true");
+            break;
+        default:
+            ui.phaseButton.textContent = "Ready";
+            ui.phaseButton.disabled = true;
+            ui.shopPanel.setAttribute("aria-hidden", "true");
+            break;
+    }
+}
+
+function seedRandom(seed) {
+    let x = seed || Date.now();
+    return function () {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        return Math.abs(x) / 0x7fffffff;
+    };
+}
+
+function genShopItems(shopLevel, rngSeed = Date.now()) {
+    const pool = lib.config.shopPools[shopLevel] || lib.config.shopPools[1];
+    const random = seedRandom(rngSeed + state.round * 31 + state.gold);
+    const items = [];
+    const available = [...pool];
+    while (items.length < 4 && available.length) {
+        const index = Math.floor(random() * available.length);
+        items.push(getShopItem(available.splice(index, 1)[0]));
+    }
+    return items;
+}
+
+function renderShop() {
+    ui.shopBody.innerHTML = "";
+    state.shopItems.forEach((item, index) => {
+        const card = document.createElement("div");
+        card.className = "shop-item";
+        const header = document.createElement("div");
+        header.className = "item-header";
+        header.innerHTML = `<span>${item.name}</span><span class="item-type">${item.type === "operator" ? `Tier ${item.tier}` : item.type === "equip" ? "Equip" : "Spell"}</span>`;
+        const desc = document.createElement("div");
+        desc.className = "item-desc";
+        desc.textContent = item.desc || `${item.costDP} DP / ${item.costGold}★`;
+        const button = document.createElement("button");
+        button.textContent = `Buy ${item.costGold}★`;
+        button.addEventListener("click", () => buyShopItem(index));
+        card.appendChild(header);
+        card.appendChild(desc);
+        card.appendChild(button);
+        ui.shopBody.appendChild(card);
+    });
+    ui.shopNote.textContent = `Dispatch center level ${state.shopLevel}, refreshed each round.`;
+}
+
+function renderHand() {
+    ui.handPanel.innerHTML = "";
+    state.hand.forEach((card, index) => {
+        const item = document.createElement("div");
+        item.className = `hand-card${index === state.selectedHandIndex ? " selected" : ""}`;
+        item.innerHTML = `<div><strong>${card.name}</strong></div>
+            <div class="label">DP ${card.costDP}</div>
+            <div class="label">${card.faction}</div>
+            <div class="label">${card.type === "operator" ? `Tier ${card.tier}` : card.type === "equip" ? "Equip" : "Spell"}</div>`;
+        item.addEventListener("click", () => {
+            if (card.type !== "operator") {
+                return;
+            }
+            state.selectedHandIndex = index;
+            renderHand();
+        });
+        ui.handPanel.appendChild(item);
+    });
+    const promotion = checkPromotionCandidates();
+    if (promotion) {
+        const tip = document.createElement("div");
+        tip.className = "hand-card";
+        tip.innerHTML = `<div><strong>Promotion Ready</strong></div><div class="item-desc">${promotion.name} can promote</div><button id="promote-button">Promote</button>`;
+        ui.handPanel.appendChild(tip);
+        tip.querySelector("#promote-button").addEventListener("click", promoteOperator);
+    }
+}
+
+function renderCovenant() {
+    const counts = state.deployed.reduce((map, unit) => {
+        map[unit.faction] = (map[unit.faction] || 0) + 1;
+        return map;
+    }, {});
+    const lines = Object.keys(counts).map(faction => {
+        const count = counts[faction];
+        const need = lib.config.covenantThreshold;
+        const active = count >= need;
+        return `${faction} ${count}/${need} ${active ? "Active" : "Inactive"}`;
+    });
+    ui.covenantBar.textContent = lines.length ? `Covenant: ${lines.join(" | ")}` : "Covenant: None";
+}
+
+function checkPromotionCandidates() {
+    const counts = {};
+    state.hand.forEach(card => {
+        if (card.type === "operator" && card.tier === 1) {
+            counts[card.id] = (counts[card.id] || 0) + 1;
+        }
+    });
+    const promoId = Object.keys(counts).find(id => counts[id] >= 3);
+    if (promoId) {
+        return getOperatorDef(promoId, 2);
+    }
+    return null;
+}
+
+function promoteOperator() {
+    const promoCandidate = checkPromotionCandidates();
+    if (!promoCandidate) {
+        return;
+    }
+    let removed = 0;
+    state.hand = state.hand.filter(card => {
+        if (removed < 3 && card.type === "operator" && card.id === promoCandidate.id && card.tier === 1) {
+            removed += 1;
+            return false;
+        }
+        return true;
+    });
+    state.hand.push({ ...promoCandidate, type: "operator" });
+    state.selectedHandIndex = state.hand.length - 1;
+    renderHand();
+    buildStatusText();
+}
+
+function buyShopItem(index) {
+    const item = state.shopItems[index];
+    if (!item || state.gold < item.costGold) {
+        return;
+    }
+    state.gold -= item.costGold;
+    if (item.type === "operator") {
+        state.hand.push({ ...item });
+    } else if (item.type === "equip") {
+        state.pendingEquips.push(item);
+    } else if (item.type === "spell") {
+        applySpell(item);
+    }
+    state.shopItems.splice(index, 1);
+    renderShop();
+    renderHand();
+    buildStatusText();
+}
+
+function applySpell(item) {
+    if (item.id === "spell_slow") {
+        state.battleData.slowMultiplier = 0.8;
+        ui.shopNote.textContent = "Spell active: enemies move 20% slower.";
+    }
+    if (item.id === "spell_heal") {
+        state.deployed.forEach(unit => {
+            unit.hp = Math.min(unit.maxHp, unit.hp + Math.round(unit.maxHp * item.effect.healPercent));
+        });
+        ui.shopNote.textContent = "Spell active: deployed operators healed.";
+    }
+}
+
+function refreshShop() {
+    if (state.gold < 2) {
+        return;
+    }
+    state.gold -= 2;
+    state.shopItems = genShopItems(state.shopLevel);
+    renderShop();
+    buildStatusText();
+}
+
+function upgradeShop() {
+    if (state.shopLevel >= 3 || state.gold < 5) {
+        return;
+    }
+    state.gold -= 5;
+    state.shopLevel += 1;
+    state.shopItems = genShopItems(state.shopLevel);
+    renderShop();
+    buildStatusText();
+}
+
+function initUI(scene) {
+    ui.gold = document.getElementById("gold-value");
+    ui.dp = document.getElementById("dp-value");
+    ui.hp = document.getElementById("hp-value");
+    ui.round = document.getElementById("round-value");
+    ui.phaseButton = document.getElementById("phase-button");
+    ui.shopBody = document.getElementById("shop-body");
+    ui.shopNote = document.getElementById("shop-note");
+    ui.shopRefresh = document.getElementById("shop-refresh");
+    ui.shopUpgrade = document.getElementById("shop-upgrade");
+    ui.handPanel = document.getElementById("hand-panel");
+    ui.covenantBar = document.getElementById("covenant-bar");
+    ui.shopPanel = document.getElementById("shop-panel");
+    ui.strategyPanel = document.getElementById("strategy-panel");
+    ui.strategyOptions = document.getElementById("strategy-options");
+    ui.resultPanel = document.getElementById("result-panel");
+    ui.resultText = document.getElementById("result-text");
+    ui.resultButton = document.getElementById("result-button");
+
+    ui.phaseButton.addEventListener("click", () => {
+        if (state.phase === GamePhase.PREP) {
+            if (state.deployed.length === 0) {
+                return;
+            }
+            enterBattle(scene);
+        } else if (state.phase === GamePhase.GAMEOVER) {
+            resetGame();
+        }
+    });
+    ui.shopRefresh.addEventListener("click", refreshShop);
+    ui.shopUpgrade.addEventListener("click", upgradeShop);
+    ui.resultButton.addEventListener("click", () => {
+        if (state.phase === GamePhase.RESOLVE) {
+            hideResult();
+            enterPrep();
+        } else if (state.phase === GamePhase.GAMEOVER) {
+            resetGame();
+        }
+    });
+
+    const shopToggle = document.getElementById("shop-toggle");
+    const shopClose = document.getElementById("shop-close");
+    if (shopToggle) {
+        shopToggle.addEventListener("click", event => {
+            event.stopPropagation();
+            const isVisible = ui.shopPanel.classList.toggle("visible");
+            ui.shopPanel.setAttribute("aria-hidden", isVisible ? "false" : "true");
+        });
+    }
+    if (shopClose) {
+        shopClose.addEventListener("click", event => {
+            event.stopPropagation();
+            ui.shopPanel.classList.remove("visible");
+            ui.shopPanel.setAttribute("aria-hidden", "true");
+        });
+    }
+    document.addEventListener("click", event => {
+        if (!ui.shopPanel.classList.contains("visible")) {
+            return;
+        }
+        if (ui.shopPanel.contains(event.target) || (shopToggle && shopToggle.contains(event.target))) {
+            return;
+        }
+        ui.shopPanel.classList.remove("visible");
+        ui.shopPanel.setAttribute("aria-hidden", "true");
+    });
+
+    ui.strategyOptions.innerHTML = "";
+    lib.config.strategies.forEach(strategy => {
+        const card = document.createElement("div");
+        card.className = "strategy-card";
+        card.innerHTML = `<div><strong>${strategy.name}</strong></div><div class="desc">${strategy.desc}</div>`;
+        card.addEventListener("click", () => selectStrategy(strategy.id));
+        ui.strategyOptions.appendChild(card);
+    });
+}
+
+function openStrategyPanel() {
+    ui.strategyPanel.classList.add("visible");
+    ui.strategyPanel.setAttribute("aria-hidden", "false");
+}
+
+function closeStrategyPanel() {
+    ui.strategyPanel.classList.remove("visible");
+    ui.strategyPanel.setAttribute("aria-hidden", "true");
+}
+
+function selectStrategy(id) {
+    const strategy = lib.config.strategies.find(item => item.id === id);
+    if (!strategy) {
+        return;
+    }
+    state.currentStrategy = strategy;
+    closeStrategyPanel();
+    enterPrep();
+}
+
+function enterPrep() {
+    setPhase(GamePhase.PREP);
+    const strategy = state.currentStrategy || {};
+    state.gold += strategy.bonusGold || 0;
+    state.dp = 4 + (strategy.bonusDP || 0);
+    state.battleData.slowMultiplier = 1;
+    state.battleData.atkMultiplier = strategy.unitAtkMultiplier || 1;
+    state.shopItems = genShopItems(state.shopLevel);
+    renderShop();
+    renderHand();
+    buildStatusText();
+    renderCovenant();
+}
+
+function enterBattle(scene) {
+    setPhase(GamePhase.BATTLE);
+    ui.shopPanel.setAttribute("aria-hidden", "true");
+    state.battleData.waveIndex = 0;
+    state.battleData.activeEnemies = [];
+    state.battleData.slowMultiplier = state.battleData.slowMultiplier || 1;
+    state.battleData.atkMultiplier = state.battleData.atkMultiplier || 1;
+    spawnRoundWaves(scene);
+}
+
+function enterResolve() {
+    const finishedRound = state.round;
+    setPhase(GamePhase.RESOLVE);
+    let reward = Math.max(3, finishedRound + 1);
+    state.gold += reward;
+    renderResult(`Round ${finishedRound} ended, gained ${reward}★.`);
+}
+
+function enterGameOver(message) {
+    setPhase(GamePhase.GAMEOVER);
+    renderResult(message);
+}
+
+function renderResult(text) {
+    ui.resultText.textContent = text;
+    ui.resultButton.textContent = state.phase === GamePhase.GAMEOVER ? "Restart" : "Next Round";
+    ui.resultPanel.classList.add("visible");
+    ui.resultPanel.setAttribute("aria-hidden", "false");
+    buildStatusText();
+}
+
+function hideResult() {
+    ui.resultPanel.classList.remove("visible");
+    ui.resultPanel.setAttribute("aria-hidden", "true");
+}
+
+function resetGame() {
+    cleanupBattle();
+    state.phase = GamePhase.IDLE;
+    state.round = 1;
+    state.gold = 5;
+    state.dp = 3;
+    state.hp = 10;
+    state.shopLevel = 1;
+    state.shopItems = [];
+    state.hand = [];
+    state.selectedHandIndex = null;
+    state.deployed = [];
+    state.currentStrategy = null;
+    state.battleData = {
+        waveIndex: 0,
+        activeEnemies: [],
+        slowMultiplier: 1,
+        atkMultiplier: 1
+    };
+    state.pendingEquips = [];
+    ui.handPanel.innerHTML = "";
+    ui.shopBody.innerHTML = "";
+    updatePhaseUI();
+    hideResult();
+    openStrategyPanel();
+    buildStatusText();
+}
+
+function cleanupBattle() {
+    state.deployed.forEach(unit => {
+        if (unit.sprite) {
+            unit.sprite.destroy();
+        }
+    });
+    state.deployed = [];
+    state.battleData.activeEnemies.forEach(enemy => {
+        if (enemy.sprite) {
+            enemy.sprite.destroy();
+        }
+    });
+    state.battleData.activeEnemies = [];
+}
+
+function spawnRoundWaves(scene) {
+    const roundIndex = Math.min(state.round - 1, lib.config.waves.length - 1);
+    const waves = lib.config.waves[roundIndex] || [];
+    waves.forEach((wave, index) => {
+        scene.time.addEvent({
+            delay: 1400 * index,
+            callback: () => spawnWave(scene, wave)
+        });
+    });
+}
+
+function spawnWave(scene, wave) {
+    wave.forEach(group => {
+        for (let i = 0; i < group.count; i += 1) {
+            scene.time.addEvent({
+                delay: 220 * i,
+                callback: () => spawnEnemy(scene, group.type)
+            });
+        }
+    });
+    state.battleData.waveIndex += 1;
+}
+
+function spawnEnemy(scene, typeId) {
+    const def = lib.config.enemyDefs[typeId];
+    if (!def) {
+        return;
+    }
+    const start = getCellCenter(lib.config.route[0].x, lib.config.route[0].y);
+    const enemySprite = scene.add.rectangle(start.x, start.y, DB.gridSize * 0.84, DB.gridSize * 0.84, def.color);
+    enemySprite.setDepth(2);
+    const enemy = {
+        id: def.id,
+        hp: def.hp,
+        maxHp: def.hp,
+        atk: def.atk,
+        speed: def.speed,
+        reward: def.reward,
+        sprite: enemySprite,
+        routeIndex: 0
+    };
+    state.battleData.activeEnemies.push(enemy);
+    moveEnemyAlongPath(scene, enemy);
+}
+
+function moveEnemyAlongPath(scene, enemy) {
+    const route = lib.config.route;
+    const nextIndex = enemy.routeIndex + 1;
+    if (nextIndex >= route.length) {
+        return;
+    }
+    const next = getCellCenter(route[nextIndex].x, route[nextIndex].y);
+    const distance = Phaser.Math.Distance.Between(enemy.sprite.x, enemy.sprite.y, next.x, next.y);
+    const duration = Math.max(200, distance / (enemy.speed * (state.battleData.slowMultiplier || 1)) * 1000);
+    scene.tweens.add({
+        targets: enemy.sprite,
+        x: next.x,
+        y: next.y,
+        duration,
+        ease: "Linear",
+        onComplete: () => {
+            enemy.routeIndex = nextIndex;
+            if (enemy.routeIndex >= route.length - 1) {
+                damagePlayer(1);
+                removeEnemy(enemy);
+            } else {
+                moveEnemyAlongPath(scene, enemy);
+            }
+        }
+    });
+}
+
+function removeEnemy(enemy) {
+    if (enemy.sprite) {
+        enemy.sprite.destroy();
+    }
+    state.battleData.activeEnemies = state.battleData.activeEnemies.filter(item => item !== enemy);
+}
+
+function damagePlayer(amount) {
+    state.hp -= amount;
+    buildStatusText();
+    if (state.hp <= 0) {
+        enterGameOver("The front line has fallen. Mission failed.");
+    }
+}
+
+function attackEnemies(delta) {
+    state.deployed.forEach(unit => {
+        unit.cooldown -= delta;
+        if (unit.cooldown > 0) {
+            return;
+        }
+        const target = state.battleData.activeEnemies.find(enemy => {
+            const enemyCol = Math.floor((enemy.sprite.x - DB.gridOffsetX) / DB.gridSize);
+            const enemyRow = Math.floor((enemy.sprite.y - DB.gridOffsetY) / DB.gridSize);
+            const dx = Math.abs(enemyCol - unit.col);
+            const dy = Math.abs(enemyRow - unit.row);
+            return dx + dy <= unit.range;
+        });
+        if (!target) {
+            return;
+        }
+        unit.cooldown = unit.atkSpd;
+        target.hp -= Math.round(unit.atk * (state.battleData.atkMultiplier || 1));
+        if (target.hp <= 0) {
+            state.gold += target.reward;
+            buildStatusText();
+            removeEnemy(target);
+        }
+    });
+}
+
+function updateBattleEnd() {
+    const roundIndex = Math.min(state.round - 1, lib.config.waves.length - 1);
+    const waves = lib.config.waves[roundIndex] || [];
+    const totalWaveCount = waves.length;
+    if (state.battleData.waveIndex >= totalWaveCount && state.battleData.activeEnemies.length === 0) {
+        const finishedRound = state.round;
+        state.round += 1;
+        if (finishedRound >= lib.config.maxRounds) {
+            enterGameOver("Victory! You held the final wave.");
+        } else {
+            enterResolve();
+        }
+    }
+}
+
+function deploySelectedUnit(col, row, scene) {
+    const card = state.hand[state.selectedHandIndex];
+    if (!card || card.type !== "operator") {
+        return;
+    }
+    const already = state.deployed.some(unit => unit.col === col && unit.row === row);
+    if (already) {
+        return;
+    }
+    if (state.dp < card.costDP) {
+        return;
+    }
+    state.dp -= card.costDP;
+    const center = getCellCenter(col, row);
+    const sprite = scene.physics.add.sprite(center.x, center.y, card.id);
+    sprite.setDisplaySize(DB.gridSize * 0.9, DB.gridSize * 0.9);
+    sprite.setDepth(2);
+    let unit = {
+        id: card.id,
+        name: card.name,
+        tier: card.tier,
+        costDP: card.costDP,
+        atk: card.atk,
+        range: card.range,
+        atkSpd: card.atkSpd,
+        hp: card.hp,
+        maxHp: card.hp,
+        def: card.def,
+        faction: card.faction,
+        col,
+        row,
+        cooldown: card.atkSpd,
+        sprite
+    };
+    state.pendingEquips.forEach(equip => {
+        if (equip.effect.atkMultiplier) {
+            unit.atk = Math.round(unit.atk * equip.effect.atkMultiplier);
+        }
+        if (equip.effect.rangeBonus) {
+            unit.range += equip.effect.rangeBonus;
+        }
+    });
+    state.pendingEquips = [];
+    state.deployed.push(unit);
+    state.hand.splice(state.selectedHandIndex, 1);
+    state.selectedHandIndex = null;
+    renderHand();
+    buildStatusText();
+    renderCovenant();
+}
+
+function setupGridInput(scene) {
+    scene.input.on("pointerdown", pointer => {
+        if (state.phase !== GamePhase.PREP) {
+            return;
+        }
+        const x = pointer.x;
+        const y = pointer.y;
+        const col = Math.floor((x - DB.gridOffsetX) / DB.gridSize);
+        const row = Math.floor((y - DB.gridOffsetY) / DB.gridSize);
+        if (col < 0 || col >= DB.gridCols || row < 0 || row >= DB.gridRows) {
+            return;
+        }
+        deploySelectedUnit(col, row, scene);
+    });
+}
+
 function preload() {
-    // 显示加载状态
     let loadingText = this.add.text(
         this.sys.game.config.width / 2,
         this.sys.game.config.height / 2 - 50,
-        "生成头像中...",
+        "Generating avatars...",
         {
             fontSize: "24px",
             fill: "#ffffff",
@@ -66,7 +756,6 @@ function preload() {
     );
     loadingText.setOrigin(0.5);
 
-    // 进度条
     let progressBar = this.add.graphics();
     let progressBox = this.add.graphics();
     progressBox.fillStyle(0x222222, 0.8);
@@ -77,16 +766,13 @@ function preload() {
         30
     );
 
-    // 获取所有操作员
     const ops = Object.keys(lib.opList);
     const total = ops.length;
     let processed = 0;
 
-    // 更新进度
     const updateProgress = () => {
         processed++;
         const value = processed / total;
-
         progressBar.clear();
         progressBar.fillStyle(0xffffff, 1);
         progressBar.fillRect(
@@ -95,10 +781,7 @@ function preload() {
             300 * value,
             20
         );
-
-        loadingText.setText(`生成中... ${Math.floor(value * 100)}%`);
-
-        // 完成
+        loadingText.setText(`Loading... ${Math.floor(value * 100)}%`);
         if (processed >= total) {
             setTimeout(() => {
                 progressBar.destroy();
@@ -110,38 +793,23 @@ function preload() {
         }
     };
 
-    // 使用Canvas生成纹理（同步，性能更好）
     ops.forEach(key => {
         const op = lib.opList[key];
-
-        // 创建Canvas
         const canvas = document.createElement("canvas");
         canvas.width = 144;
         canvas.height = 144;
         const ctx = canvas.getContext("2d");
-
-        // 绘制jdenticon
         jdenticon.drawIcon(ctx, op.name, 144);
-
         const colorThief = new ColorThief();
         op.color = colorThief.getColor(canvas, 8);
-
-        // 添加到Phaser纹理
         this.textures.addCanvas(key, canvas);
-
-        // 更新进度
         updateProgress();
     });
 }
 
-// 绘制网格边界线
 function drawGridLines(scene) {
     const graphics = scene.add.graphics();
-
-    // 设置线条样式
     graphics.lineStyle(4, 0xffffff, 0.7);
-
-    // 绘制网格线
     for (let col = 0; col <= DB.gridCols; col++) {
         const x = DB.gridOffsetX + col * DB.gridSize;
         graphics.beginPath();
@@ -149,7 +817,6 @@ function drawGridLines(scene) {
         graphics.lineTo(x, DB.gridOffsetY + DB.worldHeight);
         graphics.strokePath();
     }
-
     for (let row = 0; row <= DB.gridRows; row++) {
         const y = DB.gridOffsetY + row * DB.gridSize;
         graphics.beginPath();
@@ -157,8 +824,6 @@ function drawGridLines(scene) {
         graphics.lineTo(DB.gridOffsetX + DB.worldWidth, y);
         graphics.strokePath();
     }
-
-    // 绘制网格区域边框
     graphics.lineStyle(4, 0xffffff, 1);
     graphics.strokeRect(
         DB.gridOffsetX,
@@ -166,129 +831,120 @@ function drawGridLines(scene) {
         DB.worldWidth,
         DB.worldHeight
     );
-
-    // 设置网格线在底层显示
     graphics.setDepth(-1);
-
     return graphics;
 }
 
-// 计算网格吸附位置（吸附到格内正中央）
-function snapToGrid(x, y) {
-    // 计算相对于网格起始位置的坐标
-    const relativeX = x - DB.gridOffsetX;
-    const relativeY = y - DB.gridOffsetY;
-
-    // 计算网格索引
-    const gridCol = Math.floor(relativeX / DB.gridSize);
-    const gridRow = Math.floor(relativeY / DB.gridSize);
-
-    // 确保在网格范围内
-    const clampedCol = Phaser.Math.Clamp(gridCol, 0, DB.gridCols - 1);
-    const clampedRow = Phaser.Math.Clamp(gridRow, 0, DB.gridRows - 1);
-
-    // 计算网格中心点坐标
-    const gridCenterX =
-        DB.gridOffsetX + clampedCol * DB.gridSize + DB.gridSize / 2;
-    const gridCenterY =
-        DB.gridOffsetY + clampedRow * DB.gridSize + DB.gridSize / 2;
-
-    return { x: gridCenterX, y: gridCenterY };
+function rgbArrayToHex(rgb) {
+    if (!Array.isArray(rgb) || rgb.length < 3) {
+        return 0xffffff;
+    }
+    return Phaser.Display.Color.GetColor(rgb[0], rgb[1], rgb[2]);
 }
 
-// 创建游戏对象
+function drawRangeForSprite(sprite) {
+    if (!sprite || !sprite.rangeGraphics) {
+        return;
+    }
+    const op = lib.opList[sprite.texture.key];
+    if (!op || !Array.isArray(op.range) || op.range.length === 0) {
+        sprite.rangeGraphics.clear();
+        return;
+    }
+    const graphics = sprite.rangeGraphics;
+    graphics.clear();
+    graphics.lineStyle(2, rgbArrayToHex(op.color), 1);
+    const centerX = sprite.x;
+    const centerY = sprite.y;
+    const points = op.range;
+    let start = [0, 0];
+    let end = [0, 0];
+    if (points.length === 1 && Array.isArray(points[0]) && points[0].length === 2) {
+        end = points[0];
+    } else if (points.length >= 2 && Array.isArray(points[0]) && points[0].length === 2 && Array.isArray(points[1]) && points[1].length === 2) {
+        start = points[0];
+        end = points[1];
+    }
+    const minX = Math.min(start[0], end[0]);
+    const maxX = Math.max(start[0], end[0]);
+    const minY = Math.min(start[1], end[1]);
+    const maxY = Math.max(start[1], end[1]);
+    let rectX = centerX + minX * DB.gridSize - DB.gridSize / 2;
+    let rectY = centerY + minY * DB.gridSize - DB.gridSize / 2;
+    let rectW = (maxX - minX + 1) * DB.gridSize;
+    let rectH = (maxY - minY + 1) * DB.gridSize;
+    const worldLeft = DB.gridOffsetX;
+    const worldTop = DB.gridOffsetY;
+    const worldRight = DB.gridOffsetX + DB.worldWidth;
+    const worldBottom = DB.gridOffsetY + DB.worldHeight;
+    const rectRight = rectX + rectW;
+    const rectBottom = rectY + rectH;
+    if (rectX < worldLeft) {
+        rectW -= worldLeft - rectX;
+        rectX = worldLeft;
+    }
+    if (rectY < worldTop) {
+        rectH -= worldTop - rectY;
+        rectY = worldTop;
+    }
+    if (rectRight > worldRight) {
+        rectW -= rectRight - worldRight;
+    }
+    if (rectBottom > worldBottom) {
+        rectH -= rectBottom - worldBottom;
+    }
+    if (rectW > 0 && rectH > 0) {
+        graphics.fillStyle(rgbArrayToHex(op.color), 0.2);
+        graphics.fillRect(rectX, rectY, rectW, rectH);
+        graphics.lineStyle(2, rgbArrayToHex(op.color), 0.8);
+        graphics.strokeRect(rectX, rectY, rectW, rectH);
+    }
+}
+
+function createRangeGraphics(scene, sprite) {
+    const op = lib.opList[sprite.texture.key];
+    if (!op || !Array.isArray(op.range) || op.range.length === 0) {
+        return;
+    }
+    const graphics = scene.add.graphics();
+    graphics.setDepth(0);
+    sprite.rangeGraphics = graphics;
+    drawRangeForSprite(sprite);
+}
+
 function create() {
+    DB.gridSize = Math.floor(
+        Math.min(
+            this.sys.game.config.width / DB.gridCols,
+            this.sys.game.config.height / DB.gridRows
+        )
+    );
     DB.worldWidth = DB.gridCols * DB.gridSize;
     DB.worldHeight = DB.gridRows * DB.gridSize;
-
-    // 计算网格区域在物理世界中的居中偏移
-    DB.gridOffsetX = (lib.resolution.width - DB.worldWidth) / 2;
-    DB.gridOffsetY = (lib.resolution.height - DB.worldHeight) / 2;
-
-    // 设置物理世界边界
+    DB.gridOffsetX = (this.sys.game.config.width - DB.worldWidth) / 2;
+    DB.gridOffsetY = (this.sys.game.config.height - DB.worldHeight) / 2;
     this.physics.world.setBounds(
         DB.gridOffsetX,
         DB.gridOffsetY,
         DB.worldWidth,
         DB.worldHeight
     );
-
-    // 绘制网格线
     drawGridLines(this);
-
-    // 计算第一个网格的中心位置
-    const firstGridCenterX = DB.gridOffsetX + DB.gridSize / 2;
-    const firstGridCenterY = DB.gridOffsetY + DB.gridSize / 2;
-
-    // 创建精灵并启用物理，初始位置在第一个网格中心
-    let sprite = this.physics.add.sprite(
-        firstGridCenterX,
-        firstGridCenterY,
-        "jj"
-    );
-    sprite.setCollideWorldBounds(true); // 启用物理边界碰撞
-    sprite.setBounce(0.3, 0.3); // 设置反弹系数
-
-    // 设置精灵深度
-    sprite.setDepth(1);
-
-    // 添加拖动功能
-    sprite.setInteractive({ draggable: true });
-
-    // 监听拖动事件
-    sprite.on("drag", (pointer, dragX, dragY) => {
-        DB.isDragging = true;
-
-        // 计算物理力，使拖动更平滑
-        const forceX = (dragX - sprite.x) * 0.2;
-        const forceY = (dragY - sprite.y) * 0.2;
-
-        // 应用物理力而不是直接设置位置
-        sprite.setVelocity(forceX * 25, forceY * 25);
-    });
-
-    // 监听拖动开始事件
-    sprite.on("dragstart", pointer => {
-        DB.dragStartPos.x = sprite.x;
-        DB.dragStartPos.y = sprite.y;
-    });
-
-    // 监听拖动结束事件
-    sprite.on("dragend", pointer => {
-        DB.isDragging = false;
-
-        // 网格吸附
-        const snappedPos = snapToGrid(sprite.x, sprite.y);
-
-        // 使用补间动画进行平滑吸附
-        this.tweens.add({
-            targets: sprite,
-            x: snappedPos.x,
-            y: snappedPos.y,
-            duration: 150, // 吸附动画持续时间
-            ease: "Back.easeOut", // 回弹效果
-            onComplete: () => {
-                // 吸附完成后停止运动
-                sprite.setVelocity(0, 0);
-            }
-        });
-    });
-
-    DB.sprites.push(sprite);
-
-    // 启用物理调试（按需开启）
-    // this.physics.world.drawDebug = true;
-    // this.physics.world.debugGraphic.clear();
+    initUI(this);
+    updatePhaseUI();
+    buildStatusText();
+    openStrategyPanel();
+    setupGridInput(this);
 }
 
-// 更新游戏逻辑
 function update(time, delta) {
-    // 如果未在拖动中，应用物理约束
+    if (state.phase === GamePhase.BATTLE) {
+        attackEnemies(delta);
+        updateBattleEnd();
+    }
     if (!DB.isDragging) {
-        // 轻微阻力，使运动更平滑
         DB.sprites.forEach(sprite => {
             if (sprite.body) {
-                // 当速度很小时停止运动
                 if (Math.abs(sprite.body.velocity.x) < 5) {
                     sprite.body.velocity.x = 0;
                 }
@@ -298,7 +954,10 @@ function update(time, delta) {
             }
         });
     }
-
-    // 更新计时器
+    DB.sprites.forEach(sprite => {
+        if (sprite.rangeGraphics) {
+            drawRangeForSprite(sprite);
+        }
+    });
     timer += delta;
 }

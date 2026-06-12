@@ -8,12 +8,55 @@
         />
         <title>何忆卫 - 游戏</title>
         <link rel="stylesheet" href="css/main.css" />
-
+        <link rel="stylesheet" href="css/index.css" />
         <link href="css/game.css" rel="stylesheet" />
     </head>
     <body>
         <div id="app">
             <div id="game-container"></div>
+            <div id="battle-ui" class="battle-ui">
+                <div id="status-bar" class="status-bar">
+                    <span id="gold-value">★0</span>
+                    <span id="dp-value">DP 0</span>
+                    <span id="hp-value">HP 0</span>
+                    <span id="round-value">Round 0</span>
+                    <button id="phase-button" class="phase-button">准备</button>
+                </div>
+                <div id="covenant-bar" class="covenant-bar">盟约：无</div>
+                <div id="hand-panel" class="hand-panel"></div>
+            </div>
+            <div id="shop-toggle" class="shop-toggle" aria-label="打开商店" role="button">
+                <i class="van-icon van-icon-shop-o"></i>
+            </div>
+            <div id="shop-panel" class="shop-panel" aria-hidden="true">
+                <div class="shop-panel__header">
+                    <div class="shop-panel__title">
+                        <i class="van-icon van-icon-shop-o"></i>
+                        <span>调度中心</span>
+                    </div>
+                    <button id="shop-close" class="shop-close" type="button" aria-label="关闭商店">
+                        <i class="van-icon van-icon-close"></i>
+                    </button>
+                </div>
+                <div class="shop-panel__topbar">
+                    <button id="shop-refresh" class="shop-action">刷新(2★)</button>
+                    <button id="shop-upgrade" class="shop-action">升级中心(5★)</button>
+                </div>
+                <div id="shop-body" class="shop-body"></div>
+                <div id="shop-note" class="shop-note"></div>
+            </div>
+            <div id="strategy-panel" class="overlay-panel visible" aria-hidden="false">
+                <div class="overlay-box">
+                    <div class="overlay-title">选择策略</div>
+                    <div id="strategy-options" class="strategy-options"></div>
+                </div>
+            </div>
+            <div id="result-panel" class="overlay-panel" aria-hidden="true">
+                <div class="overlay-box">
+                    <div id="result-text" class="overlay-title"></div>
+                    <button id="result-button" class="phase-button"></button>
+                </div>
+            </div>
         </div>
         <div id="dark"></div>
     </body>
