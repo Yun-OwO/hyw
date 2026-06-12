@@ -14,7 +14,8 @@ const lib = {
             svg: "",
             atkType: "phy",
             bl: 2,
-            delay: 750
+            delay: 750,
+            range: [[1, 0]],
         },
         xf: {
             name: "先锋",
@@ -26,7 +27,8 @@ const lib = {
             svg: "",
             atkType: "phy",
             bl: 2,
-            delay: 500
+            delay: 500,
+            range: [[1, 0]],
         },
         jj: {
             name: "狙击",
@@ -38,7 +40,8 @@ const lib = {
             svg: "",
             atkType: "phy",
             bl: 0,
-            delay: 500
+            delay: 500,
+            range: [[0, 1], [3, -1]]
         },
         ss: {
             name: "术师",
@@ -50,7 +53,8 @@ const lib = {
             svg: "",
             atkType: "spe",
             bl: 0,
-            delay: 800
+            delay: 800,
+            range: [[0, 1], [3, -1]]
         },
         tz: {
             name: "特种",
@@ -62,7 +66,8 @@ const lib = {
             svg: "",
             atkType: "spe",
             bl: 1,
-            delay: 450
+            delay: 450,
+            range: [[1, 0]]
         },
         zz: {
             name: "重装",
@@ -74,7 +79,8 @@ const lib = {
             svg: "",
             atkType: "phy",
             bl: 3,
-            delay: 750
+            delay: 750,
+            range: []
         },
         yl: {
             name: "医疗",
@@ -86,7 +92,8 @@ const lib = {
             svg: "",
             atkType: "tre",
             bl: 0,
-            delay: 1400
+            delay: 1400,
+            range: [[0,1], [3, -1]]
         }
     },
     resolution: {
