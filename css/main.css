@@ -1,0 +1,387 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #323233;
+    background-color: #f7f8fa;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 移动端适配基础样式 */
+.van-hairline--top-bottom::after {
+    border-width: 0;
+}
+
+/* 防止 iOS 点击延迟 */
+a,
+button,
+input,
+.van-button {
+    touch-action: manipulation;
+}
+
+/* 禁用长按菜单 */
+* {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* 允许文本选择 */
+p,
+span,
+div,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* 滚动条优化 */
+::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+}
+
+/* 输入框样式重置 */
+input,
+textarea {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    border-radius: 0;
+}
+
+/* 安全区域适配（iPhone X 及以上） */
+.safe-area-inset-bottom {
+    padding-left: constant(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-bottom);
+}
+/* 横屏布局样式 */
+body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #f7f8fa;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+/* 修改容器布局为横向排列 */
+.op-container {
+  display: flex;
+  flex-wrap: nowrap; /* 不换行 */
+  gap: 10px;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  width: auto;
+  height: 100vh;
+  max-width: 100%;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent; /* Firefox */
+}
+
+/* Chrome, Edge, Safari 滚动条样式 */
+.op-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.op-container::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 20px;
+}
+
+.op-container::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+}
+
+/* 调整每个op项目的样式 */
+.op {
+  flex: 0 0 auto; /* 不允许伸缩，保持原始尺寸 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  padding: 15px;
+  border-radius: 20px;
+  cursor: pointer;
+  position: relative;
+  background-color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+  min-width: 80px;
+  transition: all 384ms;
+}
+
+.op:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.op-svg-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+
+.op-svg {
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  background-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.op-svg svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+/* 修改悬浮框样式，从下方弹出 */
+.op-description {
+  display: flex;
+  position: absolute;
+  top: 100%; /* 放在op元素下方 */
+  left: 50%;
+  margin-left: 0;
+  margin-top: 10px; /* 与图标保持距离 */
+  z-index: 1001;
+  min-width: 120px;
+  padding: 12px;
+  background-color: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid #eeeeee;
+  flex-direction: column;
+  justify-content: center;
+  transform: translateX(-50%) translateY(-20px);
+  animation: transOut 284ms forwards;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.op-description.show {
+  display: flex;
+  transform: translateX(-50%) translateY(0);
+  animation: transIn 384ms;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto; /* 显示时允许交互 */
+}
+
+/* 修改箭头位置，指向图标 */
+.op-description:before {
+  content: "";
+  position: absolute;
+  bottom: 100%; /* 在悬浮框上方 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid #ffffff;
+  z-index: 1001;
+}
+
+.op-description:after {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 7px solid #eeeeee;
+  z-index: 999;
+}
+
+/* 修改动画 */
+@keyframes transIn {
+  0% {
+    transform: translateX(-50%) translateY(-20px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes transOut {
+  0% {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  75% {
+    transform: translateX(-50%) translateY(-20px);
+    opacity: 0;
+  }
+}
+
+.op-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eeeeee;
+  text-align: center;
+}
+
+.op-stat {
+  font-size: 13px;
+  color: #666666;
+  line-height: 1;
+  padding: 3px 0;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  justify-content: space-between;
+}
+
+.op-stat:before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #1890ff;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.op-stat-value {
+  font-weight: 600;
+  color: #333333;
+}
+
+/* 横屏适配 */
+@media (orientation: landscape) {
+  .op-container {
+    justify-content: flex-start; /* 左对齐，允许滚动 */
+  }
+  
+  .op {
+    min-width: 100px;
+  }
+  
+  .op-svg {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* 小屏幕横屏适配 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .op-container {
+    padding: 10px 0;
+  }
+  
+  .op {
+    padding: 8px;
+    min-width: 90px;
+  }
+  
+  .op-svg {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .op-description {
+    min-width: 160px;
+  }
+}
+
+#start-btn {
+    height: 100px;
+    width: 50%;
+    margin: 20px;
+    border-radius: 20px;
+    border: none;
+    box-shadow: 0 5px 10px #AAA;
+    background-color: #AAA;
+    color: #fff;
+    font-weight: 600;
+    transition: all 1000ms;
+    z-index: 1003;
+}
+
+#start-btn:active {
+    background-color: #13ff79;
+    box-shadow: 0 0 30px #13ff79;
+    font-weight: 800;
+    transform: scale(1.1);
+}
+
+#start-btn:active ~ .mask {
+    background-color: rgba(0, 0, 0, 1);
+    backdrop-filter: blur(5px);
+}
+
+h1 {
+    font-size: 300%;
+}
+
+.mask, #dark {
+    background-color: rgba(0, 0, 0, 0);
+    pointer-events: none;
+    z-index: 1002;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 100vw;
+    backdrop-filter: blur(0px);
+    transition: all 1000ms;
+}
+
+#dark {
+    background-color: #000;
+    z-index: 99999999;
+    transition: opacity 500ms;
+    opacity: 0;
+}

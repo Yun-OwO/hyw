@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+        />
+        <title>何忆卫</title>
+        <link rel="stylesheet" href="css/index.css" />
+
+        <link href="css/main.css" rel="stylesheet" />
+    </head>
+    <body>
+        <div id="app">
+            <div class="op-container">
+                <div
+                    v-for="(value, key) in opList"
+                    :key="key"
+                    class="op"
+                    @click="toggleDescription($event, key)"
+                >
+                    <div class="op-svg-container">
+                        <div class="op-svg" v-html="value.svg"></div>
+                        <div class="op-description">
+                            <div class="op-name">{{value.name}}</div>
+                            <div class="op-stat">
+                                生命:
+                                <span class="op-stat-value">{{value.hp}}</span>
+                            </div>
+                            <div class="op-stat">
+                                攻击:
+                                <span class="op-stat-value">{{value.atk}}</span>
+                            </div>
+                            <div class="op-stat">
+                                防御:
+                                <span class="op-stat-value">{{value.def}}</span>
+                            </div>
+                            <div class="op-stat">
+                                法抗:
+                                <span class="op-stat-value">{{value.sr}}</span>
+                            </div>
+                            <div class="op-stat">
+                                费用:
+                                <span class="op-stat-value">{{value.dp}}</span>
+                            </div>
+                            <div class="op-stat">
+                                阻挡:
+                                <span class="op-stat-value">{{value.bl}}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <h1>何 忆 卫</h1>
+            <br />
+            <button id="start-btn" @touchstart="boot()" @touchend="cancel()">！？区区？！</button>
+            <div class="mask"></div>
+        </div>
+        <div id="dark"></div>
+    </body>
+    <script src="js/jdenticon.js" defer></script>
+    <script src="js/lib.js" defer></script>
+    <script src="js/vue.js" defer></script>
+    <script src="js/vant.js" defer></script>
+    <script src="js/main.js" defer></script>
+</html>
