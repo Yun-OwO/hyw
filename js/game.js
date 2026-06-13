@@ -162,8 +162,8 @@ function buildStatusText() {
     }
     ui.gold.textContent = `★ ${state.gold}`;
     ui.dp.textContent = `DP ${state.dp}`;
-    ui.hp.textContent = `HP ${state.hp}`;
-    ui.round.textContent = `Round ${state.round}`;
+    ui.hp.textContent = `❤ ${state.hp}`;
+    ui.round.textContent = `第${state.round}波`;
 }
 
 function updatePhaseUI() {
@@ -173,26 +173,26 @@ function updatePhaseUI() {
     ui.phaseButton.disabled = false;
     switch (state.phase) {
         case GamePhase.PREP:
-            ui.phaseButton.textContent = "Begin Defense";
+            ui.phaseButton.textContent = "开始战斗";
             ui.phaseButton.disabled = state.deployed.length === 0;
             ui.shopPanel.setAttribute("aria-hidden", "false");
             break;
         case GamePhase.BATTLE:
-            ui.phaseButton.textContent = "In Battle";
+            ui.phaseButton.textContent = "战斗中";
             ui.phaseButton.disabled = true;
             ui.shopPanel.setAttribute("aria-hidden", "true");
             break;
         case GamePhase.RESOLVE:
-            ui.phaseButton.textContent = "Resolving";
+            ui.phaseButton.textContent = "结算中";
             ui.phaseButton.disabled = true;
             break;
         case GamePhase.GAMEOVER:
-            ui.phaseButton.textContent = "Restart";
+            ui.phaseButton.textContent = "重新开始";
             ui.phaseButton.disabled = false;
             ui.shopPanel.setAttribute("aria-hidden", "true");
             break;
         default:
-            ui.phaseButton.textContent = "Ready";
+            ui.phaseButton.textContent = "准备";
             ui.phaseButton.disabled = true;
             ui.shopPanel.setAttribute("aria-hidden", "true");
             break;
@@ -228,19 +228,19 @@ function renderShop() {
         card.className = "shop-item";
         const header = document.createElement("div");
         header.className = "item-header";
-        header.innerHTML = `<span>${item.name}</span><span class="item-type">${item.type === "operator" ? `Tier ${item.tier}` : item.type === "equip" ? "Equip" : "Spell"}</span>`;
+        header.innerHTML = `<span>${item.name}</span><span class="item-type">${item.type === "operator" ? `阶${item.tier}` : item.type === "equip" ? "装备" : "法术"}</span>`;
         const desc = document.createElement("div");
         desc.className = "item-desc";
         desc.textContent = item.desc || `${item.costDP} DP / ${item.costGold}★`;
         const button = document.createElement("button");
-        button.textContent = `Buy ${item.costGold}★`;
+        button.textContent = `购买 ${item.costGold}★`;
         button.addEventListener("click", () => buyShopItem(index));
         card.appendChild(header);
         card.appendChild(desc);
         card.appendChild(button);
         ui.shopBody.appendChild(card);
     });
-    ui.shopNote.textContent = `Dispatch center level ${state.shopLevel}, refreshed each round.`;
+    ui.shopNote.textContent = `调度中心 等级 ${state.shopLevel}，每轮刷新`;
 }
 
 function renderHand() {
@@ -249,9 +249,9 @@ function renderHand() {
         const item = document.createElement("div");
         item.className = `hand-card${index === state.selectedHandIndex ? " selected" : ""}`;
         item.innerHTML = `<div><strong>${card.name}</strong></div>
-            <div class="label">DP ${card.costGold || card.costDP}</div>
+            <div class="label">★ ${card.costGold || card.costDP}</div>
             <div class="label">${card.faction || card.type.toUpperCase()}</div>
-            <div class="label">${card.type === "operator" ? `Tier ${card.tier}` : card.type === "equip" ? "Equip" : "Spell"}</div>`;
+            <div class="label">${card.type === "operator" ? `阶${card.tier}` : card.type === "equip" ? "装备" : "法术"}</div>`;
         item.style.touchAction = "none";
         item.addEventListener("pointerdown", event => {
             event.preventDefault();
@@ -267,7 +267,7 @@ function renderHand() {
     if (promotion) {
         const tip = document.createElement("div");
         tip.className = "hand-card";
-        tip.innerHTML = `<div><strong>Promotion Ready</strong></div><div class="item-desc">${promotion.name} can promote</div><button id="promote-button">Promote</button>`;
+        tip.innerHTML = `<div><strong>可晋升</strong></div><div class="item-desc">${promotion.name} 可晋升</div><button id="promote-button">晋升</button>`;
         ui.handPanel.appendChild(tip);
         tip.querySelector("#promote-button").addEventListener("click", promoteOperator);
     }
@@ -441,7 +441,7 @@ function applyEquipToUnit(unit, equip) {
     unit.equips = unit.equips || [];
     unit.equips.push(equip.name);
     showUnitInfo(unit);
-    ui.shopNote.textContent = `Equip applied to ${unit.name}`;
+    ui.shopNote.textContent = `已将装备应用至 ${unit.name}`;
 }
 
 function showUnitInfo(unit) {
@@ -449,10 +449,10 @@ function showUnitInfo(unit) {
         return;
     }
     if (!unit) {
-        ui.unitInfo.textContent = "Select deployed operator to view stats.";
+        ui.unitInfo.textContent = "请选择已部署干员以查看属性。";
         return;
     }
-    ui.unitInfo.textContent = `${unit.name}: ATK ${unit.atk}, HP ${unit.hp}/${unit.maxHp}, RANGE ${unit.range}${unit.equips && unit.equips.length ? `, EQUIP: ${unit.equips.join(", ")}` : ""}`;
+    ui.unitInfo.textContent = `${unit.name} · ⚔${unit.atk}  ❤${unit.hp}/${unit.maxHp}  射程${unit.range}${unit.equips && unit.equips.length ? ` · 装:${unit.equips.join(",")}` : ""}`;
 }
 
 function checkPromotionCandidates() {
@@ -508,13 +508,13 @@ function buyShopItem(index) {
 function applySpell(item) {
     if (item.id === "spell_slow") {
         state.battleData.slowMultiplier = 0.8;
-        ui.shopNote.textContent = "Spell active: enemies move 20% slower.";
+        ui.shopNote.textContent = "法术生效：敌人移速降低20%";
     }
     if (item.id === "spell_heal") {
         state.deployed.forEach(unit => {
             unit.hp = Math.min(unit.maxHp, unit.hp + Math.round(unit.maxHp * item.effect.healPercent));
         });
-        ui.shopNote.textContent = "Spell active: deployed operators healed.";
+        ui.shopNote.textContent = "法术生效：为已部署干员恢复生命";
     }
 }
 
@@ -684,7 +684,7 @@ function enterResolve() {
     setPhase(GamePhase.RESOLVE);
     let reward = Math.max(3, finishedRound + 1);
     state.gold += reward;
-    renderResult(`Round ${finishedRound} ended, gained ${reward}★.`);
+    renderResult(`第${finishedRound}波结束，获得 ${reward}★。`);
 }
 
 function enterGameOver(message) {
@@ -694,7 +694,7 @@ function enterGameOver(message) {
 
 function renderResult(text) {
     ui.resultText.textContent = text;
-    ui.resultButton.textContent = state.phase === GamePhase.GAMEOVER ? "Restart" : "Next Round";
+    ui.resultButton.textContent = state.phase === GamePhase.GAMEOVER ? "重新开始" : "下一回合";
     ui.resultPanel.classList.add("visible");
     ui.resultPanel.setAttribute("aria-hidden", "false");
     buildStatusText();
@@ -857,7 +857,7 @@ function damagePlayer(amount) {
     state.hp -= amount;
     buildStatusText();
     if (state.hp <= 0) {
-        enterGameOver("The front line has fallen. Mission failed.");
+        enterGameOver("前线溃败，任务失败。");
     }
 }
 
@@ -895,7 +895,7 @@ function updateBattleEnd() {
         const finishedRound = state.round;
         state.round += 1;
         if (finishedRound >= lib.config.maxRounds) {
-            enterGameOver("Victory! You held the final wave.");
+            enterGameOver("胜利！你守住了最后一波。");
         } else {
             enterResolve();
         }
@@ -1052,11 +1052,11 @@ function preload() {
     let loadingText = this.add.text(
         this.sys.game.config.width / 2,
         this.sys.game.config.height / 2 - 50,
-        "Generating avatars...",
+        "生成头像中...",
         {
             fontSize: "24px",
             fill: "#ffffff",
-            fontFamily: "Arial, sans-serif"
+            fontFamily: "Noto Sans SC, Microsoft YaHei, Arial, sans-serif"
         }
     );
     loadingText.setOrigin(0.5);
@@ -1086,7 +1086,7 @@ function preload() {
             300 * value,
             20
         );
-        loadingText.setText(`Loading... ${Math.floor(value * 100)}%`);
+        loadingText.setText(`加载中... ${Math.floor(value * 100)}%`);
         if (processed >= total) {
             setTimeout(() => {
                 progressBar.destroy();

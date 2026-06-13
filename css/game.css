@@ -1,24 +1,26 @@
-#app, body, html, #game-container * {
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+html, body {
+    width: 100%;
+    height: 100%;
     margin: 0;
     padding: 0;
-    image-rendering: pixelated;
+    overflow: hidden;
     background-color: #000;
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 1;
+    font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+#app, #game-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
 }
 
 * {
     user-select: none;
     outline: none;
     cursor: none;
+    box-sizing: border-box;
 }
 
 #dark {
@@ -37,6 +39,11 @@
     inset: 0;
     pointer-events: none;
     z-index: 20;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 12px 14px;
 }
 
 .status-bar {
@@ -97,17 +104,22 @@
 
 .unit-info {
     position: absolute;
-    top: 132px;
+    top: 110px;
     left: 12px;
     right: 12px;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: 16px;
-    background: rgba(6, 16, 36, 0.84);
+    background: rgba(6, 16, 36, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: #d0e8ff;
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.4;
     pointer-events: auto;
     z-index: 22;
+}
+
+.covenant-bar {
+    top: 76px;
 }
 
 .drag-preview {
@@ -128,17 +140,20 @@
 }
 
 .hand-panel {
-    bottom: 16px;
-    left: 12px;
-    right: 12px;
-    min-height: 90px;
-    padding: 10px;
+    position: absolute;
+    bottom: 12px;
+    left: 10px;
+    right: 10px;
+    min-height: 72px;
+    max-height: 24vh;
+    padding: 10px 10px 8px;
     border-radius: 18px;
     display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 8px;
+    flex-wrap: nowrap;
     align-items: center;
-    background: rgba(10, 18, 45, 0.84);
+    overflow-x: auto;
+    background: rgba(10, 18, 45, 0.86);
     border: 1px solid rgba(255, 255, 255, 0.16);
     pointer-events: auto;
 }
@@ -304,6 +319,76 @@
     justify-content: space-between;
     align-items: center;
     font-size: 13px;
+}
+
+@media (max-width: 960px), (max-aspect-ratio: 21/9), (max-height: 520px) {
+    .status-bar {
+        top: 10px;
+        left: 10px;
+        right: 70px;
+        padding: 8px 10px;
+        gap: 6px;
+        font-size: 11px;
+    }
+
+    .status-bar span {
+        padding: 5px 8px;
+        border-radius: 10px;
+    }
+
+    .phase-button {
+        min-width: 96px;
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .covenant-bar,
+    .unit-info {
+        right: 10px;
+        left: 10px;
+        padding: 8px 10px;
+        font-size: 10px;
+    }
+
+    .unit-info {
+        top: auto;
+        bottom: 108px;
+    }
+
+    .hand-panel {
+        bottom: 10px;
+        left: 8px;
+        right: 8px;
+        min-height: 64px;
+        padding: 8px 8px 6px;
+        gap: 6px;
+    }
+
+    .hand-card {
+        width: 96px;
+        min-height: 62px;
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    .hand-card .label {
+        padding: 3px 5px;
+        font-size: 10px;
+    }
+
+    .shop-toggle {
+        top: 10px;
+        right: 10px;
+        width: 48px;
+        height: 48px;
+    }
+
+    .shop-panel {
+        width: min(320px, 50vw);
+        top: 80px;
+        right: 10px;
+        max-height: calc(100vh - 100px);
+    }
 }
 
 .shop-item .item-type {
