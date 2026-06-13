@@ -36,13 +36,26 @@ let DB = {
     sprites: [],
     isDragging: false,
     dragStartPos: { x: 0, y: 0 },
+    draggingHandIndex: null,
+    draggingUnit: null,
+    dragOrigin: null,
     gridSize: 144,
     gridCols: 16,
     gridRows: 6,
     worldWidth: 0,
     worldHeight: 0,
     gridOffsetX: 0,
-    gridOffsetY: 0
+    gridOffsetY: 0,
+    currentScene: null,
+    gameCanvas: null,
+    gameWidth: 0,
+    gameHeight: 0,
+    dragPreview: null,
+    pinchPointers: {},
+    pinchStartDistance: null,
+    pinchStartZoom: 1,
+    minZoom: 0.8,
+    maxZoom: 2.4
 };
 
 const GamePhase = {
@@ -236,15 +249,17 @@ function renderHand() {
         const item = document.createElement("div");
         item.className = `hand-card${index === state.selectedHandIndex ? " selected" : ""}`;
         item.innerHTML = `<div><strong>${card.name}</strong></div>
-            <div class="label">DP ${card.costDP}</div>
-            <div class="label">${card.faction}</div>
+            <div class="label">DP ${card.costGold || card.costDP}</div>
+            <div class="label">${card.faction || card.type.toUpperCase()}</div>
             <div class="label">${card.type === "operator" ? `Tier ${card.tier}` : card.type === "equip" ? "Equip" : "Spell"}</div>`;
-        item.addEventListener("click", () => {
-            if (card.type !== "operator") {
+        item.style.touchAction = "none";
+        item.addEventListener("pointerdown", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!state.phase || state.phase !== GamePhase.PREP) {
                 return;
             }
-            state.selectedHandIndex = index;
-            renderHand();
+            startHandDrag(index, card);
         });
         ui.handPanel.appendChild(item);
     });
@@ -270,6 +285,174 @@ function renderCovenant() {
         return `${faction} ${count}/${need} ${active ? "Active" : "Inactive"}`;
     });
     ui.covenantBar.textContent = lines.length ? `Covenant: ${lines.join(" | ")}` : "Covenant: None";
+}
+
+function ensureDragPreview() {
+    if (!DB.dragPreview) {
+        const preview = document.createElement("div");
+        preview.id = "drag-preview";
+        preview.className = "drag-preview";
+        preview.style.position = "fixed";
+        preview.style.pointerEvents = "none";
+        preview.style.display = "none";
+        preview.style.zIndex = "40";
+        preview.style.padding = "10px 14px";
+        preview.style.borderRadius = "14px";
+        preview.style.background = "rgba(10, 18, 45, 0.9)";
+        preview.style.color = "#fff";
+        preview.style.fontSize = "13px";
+        preview.style.boxShadow = "0 12px 28px rgba(0,0,0,0.28)";
+        document.body.appendChild(preview);
+        DB.dragPreview = preview;
+    }
+    return DB.dragPreview;
+}
+
+function startHandDrag(index, card) {
+    state.selectedHandIndex = index;
+    DB.draggingHandIndex = index;
+    DB.isDragging = true;
+    const preview = ensureDragPreview();
+    preview.textContent = card.name;
+    preview.style.display = "flex";
+    preview.style.left = "0px";
+    preview.style.top = "0px";
+    renderHand();
+}
+
+function updateDragPreview(clientX, clientY) {
+    if (!DB.isDragging || !DB.dragPreview) {
+        return;
+    }
+    DB.dragPreview.style.left = `${clientX + 14}px`;
+    DB.dragPreview.style.top = `${clientY + 14}px`;
+}
+
+function stopDrag(event) {
+    if (!DB.isDragging) {
+        return;
+    }
+    DB.isDragging = false;
+    if (DB.dragPreview) {
+        DB.dragPreview.style.display = "none";
+    }
+    const canvas = DB.gameCanvas || document.querySelector("#game-container canvas");
+    if (!canvas || !DB.currentScene) {
+        if (DB.draggingUnit) {
+            snapUnitToOrigin(DB.draggingUnit);
+        }
+        DB.draggingUnit = null;
+        DB.draggingHandIndex = null;
+        renderHand();
+        return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * (DB.gameWidth / rect.width);
+    const y = (event.clientY - rect.top) * (DB.gameHeight / rect.height);
+    const col = Math.floor((x - DB.gridOffsetX) / DB.gridSize);
+    const row = Math.floor((y - DB.gridOffsetY) / DB.gridSize);
+    if (DB.draggingHandIndex !== null) {
+        const card = state.hand[DB.draggingHandIndex];
+        if (card) {
+            if (col >= 0 && col < DB.gridCols && row >= 0 && row < DB.gridRows) {
+                const occupiedBy = state.deployed.find(unit => unit.col === col && unit.row === row);
+                if (card.type === "equip" && occupiedBy) {
+                    applyEquipToUnit(occupiedBy, card);
+                    state.hand.splice(DB.draggingHandIndex, 1);
+                } else if (card.type === "operator" && !occupiedBy) {
+                    deploySelectedUnit(col, row, DB.currentScene);
+                }
+            }
+        }
+        state.selectedHandIndex = null;
+        renderHand();
+    } else if (DB.draggingUnit) {
+        if (col >= 0 && col < DB.gridCols && row >= 0 && row < DB.gridRows) {
+            const occupiedBy = state.deployed.find(unit => unit.col === col && unit.row === row && unit !== DB.draggingUnit);
+            if (!occupiedBy) {
+                DB.draggingUnit.col = col;
+                DB.draggingUnit.row = row;
+                const center = getCellCenter(col, row);
+                DB.draggingUnit.sprite.setPosition(center.x, center.y);
+                if (DB.draggingUnit.sprite.rangeGraphics) {
+                    drawRangeForSprite(DB.draggingUnit.sprite);
+                }
+            } else {
+                snapUnitToOrigin(DB.draggingUnit);
+            }
+        } else {
+            snapUnitToOrigin(DB.draggingUnit);
+        }
+        DB.draggingUnit.sprite.setAlpha(1);
+        DB.draggingUnit = null;
+    }
+}
+
+function startUnitMove(unit, pointer) {
+    if (!unit || !unit.sprite) {
+        return;
+    }
+    DB.isDragging = true;
+    DB.draggingUnit = unit;
+    DB.dragOrigin = { col: unit.col, row: unit.row };
+    unit.sprite.setAlpha(0.6);
+    showUnitInfo(unit);
+    updateDraggedUnit(pointer.clientX, pointer.clientY);
+}
+
+function updateDraggedUnit(clientX, clientY) {
+    if (!DB.draggingUnit || !DB.draggingUnit.sprite) {
+        return;
+    }
+    const canvas = DB.gameCanvas || document.querySelector("#game-container canvas");
+    if (!canvas) {
+        return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const x = (clientX - rect.left) * (DB.gameWidth / rect.width);
+    const y = (clientY - rect.top) * (DB.gameHeight / rect.height);
+    DB.draggingUnit.sprite.setPosition(x, y);
+    if (DB.draggingUnit.sprite.rangeGraphics) {
+        drawRangeForSprite(DB.draggingUnit.sprite);
+    }
+}
+
+function snapUnitToOrigin(unit) {
+    if (!unit || !unit.sprite) {
+        return;
+    }
+    const center = getCellCenter(unit.col, unit.row);
+    unit.sprite.setPosition(center.x, center.y);
+    if (unit.sprite.rangeGraphics) {
+        drawRangeForSprite(unit.sprite);
+    }
+}
+
+function applyEquipToUnit(unit, equip) {
+    if (!unit || !equip) {
+        return;
+    }
+    if (equip.effect.atkMultiplier) {
+        unit.atk = Math.round(unit.atk * equip.effect.atkMultiplier);
+    }
+    if (equip.effect.rangeBonus) {
+        unit.range += equip.effect.rangeBonus;
+    }
+    unit.equips = unit.equips || [];
+    unit.equips.push(equip.name);
+    showUnitInfo(unit);
+    ui.shopNote.textContent = `Equip applied to ${unit.name}`;
+}
+
+function showUnitInfo(unit) {
+    if (!ui.unitInfo) {
+        return;
+    }
+    if (!unit) {
+        ui.unitInfo.textContent = "Select deployed operator to view stats.";
+        return;
+    }
+    ui.unitInfo.textContent = `${unit.name}: ATK ${unit.atk}, HP ${unit.hp}/${unit.maxHp}, RANGE ${unit.range}${unit.equips && unit.equips.length ? `, EQUIP: ${unit.equips.join(", ")}` : ""}`;
 }
 
 function checkPromotionCandidates() {
@@ -311,10 +494,8 @@ function buyShopItem(index) {
         return;
     }
     state.gold -= item.costGold;
-    if (item.type === "operator") {
+    if (item.type === "operator" || item.type === "equip") {
         state.hand.push({ ...item });
-    } else if (item.type === "equip") {
-        state.pendingEquips.push(item);
     } else if (item.type === "spell") {
         applySpell(item);
     }
@@ -369,9 +550,10 @@ function initUI(scene) {
     ui.shopRefresh = document.getElementById("shop-refresh");
     ui.shopUpgrade = document.getElementById("shop-upgrade");
     ui.handPanel = document.getElementById("hand-panel");
+    ui.unitInfo = document.getElementById("unit-info");
     ui.covenantBar = document.getElementById("covenant-bar");
     ui.shopPanel = document.getElementById("shop-panel");
-    ui.strategyPanel = document.getElementById("strategy-panel");
+    ui.strategyPanel = document.getElementById("strategy-panel") || document.querySelector("#strategy-panel");
     ui.strategyOptions = document.getElementById("strategy-options");
     ui.resultPanel = document.getElementById("result-panel");
     ui.resultText = document.getElementById("result-text");
@@ -425,22 +607,40 @@ function initUI(scene) {
         ui.shopPanel.setAttribute("aria-hidden", "true");
     });
 
+    document.addEventListener("pointermove", event => {
+        if (DB.isDragging) {
+            updateDragPreview(event.clientX, event.clientY);
+            if (DB.draggingUnit) {
+                updateDraggedUnit(event.clientX, event.clientY);
+            }
+        }
+    });
+    document.addEventListener("pointerup", stopDrag);
+
     ui.strategyOptions.innerHTML = "";
     lib.config.strategies.forEach(strategy => {
         const card = document.createElement("div");
         card.className = "strategy-card";
-        card.innerHTML = `<div><strong>${strategy.name}</strong></div><div class="desc">${strategy.desc}</div>`;
+        const desc = typeof strategy.desc === "string" ? strategy.desc.replace(/^PREP\s*/i, "") : "";
+        card.innerHTML = `<div><strong>${strategy.name}</strong></div><div class="desc">${desc}</div>`;
         card.addEventListener("click", () => selectStrategy(strategy.id));
         ui.strategyOptions.appendChild(card);
     });
 }
 
 function openStrategyPanel() {
+    if (!ui.strategyPanel) {
+        console.warn("Strategy panel element not found.");
+        return;
+    }
     ui.strategyPanel.classList.add("visible");
     ui.strategyPanel.setAttribute("aria-hidden", "false");
 }
 
 function closeStrategyPanel() {
+    if (!ui.strategyPanel) {
+        return;
+    }
     ui.strategyPanel.classList.remove("visible");
     ui.strategyPanel.setAttribute("aria-hidden", "true");
 }
@@ -546,6 +746,12 @@ function cleanupBattle() {
         }
     });
     state.battleData.activeEnemies = [];
+    DB.sprites.forEach(sprite => {
+        if (sprite && sprite.destroy) {
+            sprite.destroy();
+        }
+    });
+    DB.sprites = [];
 }
 
 function spawnRoundWaves(scene) {
@@ -571,16 +777,36 @@ function spawnWave(scene, wave) {
     state.battleData.waveIndex += 1;
 }
 
+function ensureEnemyTexture(scene, def) {
+    const key = `enemy_${def.id}`;
+    if (scene.textures.exists(key)) {
+        return key;
+    }
+    const size = Math.max(96, Math.round(DB.gridSize * 0.9));
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = "#111d33";
+    ctx.fillRect(0, 0, size, size);
+    jdenticon.drawIcon(ctx, def.name, size);
+    scene.textures.addCanvas(key, canvas);
+    return key;
+}
+
 function spawnEnemy(scene, typeId) {
     const def = lib.config.enemyDefs[typeId];
     if (!def) {
         return;
     }
     const start = getCellCenter(lib.config.route[0].x, lib.config.route[0].y);
-    const enemySprite = scene.add.rectangle(start.x, start.y, DB.gridSize * 0.84, DB.gridSize * 0.84, def.color);
+    const textureKey = ensureEnemyTexture(scene, def);
+    const enemySprite = scene.add.image(start.x, start.y, textureKey);
+    enemySprite.setDisplaySize(DB.gridSize * 0.9, DB.gridSize * 0.9);
     enemySprite.setDepth(2);
     const enemy = {
         id: def.id,
+        name: def.name,
         hp: def.hp,
         maxHp: def.hp,
         atk: def.atk,
@@ -693,6 +919,8 @@ function deploySelectedUnit(col, row, scene) {
     const sprite = scene.physics.add.sprite(center.x, center.y, card.id);
     sprite.setDisplaySize(DB.gridSize * 0.9, DB.gridSize * 0.9);
     sprite.setDepth(2);
+    createRangeGraphics(scene, sprite);
+    DB.sprites.push(sprite);
     let unit = {
         id: card.id,
         name: card.name,
@@ -708,17 +936,9 @@ function deploySelectedUnit(col, row, scene) {
         col,
         row,
         cooldown: card.atkSpd,
-        sprite
+        sprite,
+        equips: []
     };
-    state.pendingEquips.forEach(equip => {
-        if (equip.effect.atkMultiplier) {
-            unit.atk = Math.round(unit.atk * equip.effect.atkMultiplier);
-        }
-        if (equip.effect.rangeBonus) {
-            unit.range += equip.effect.rangeBonus;
-        }
-    });
-    state.pendingEquips = [];
     state.deployed.push(unit);
     state.hand.splice(state.selectedHandIndex, 1);
     state.selectedHandIndex = null;
@@ -727,20 +947,105 @@ function deploySelectedUnit(col, row, scene) {
     renderCovenant();
 }
 
+function initCamera(scene) {
+    const camera = scene.cameras.main;
+    camera.setBounds(DB.gridOffsetX, DB.gridOffsetY, DB.worldWidth, DB.worldHeight);
+    camera.setZoom(1);
+}
+
 function setupGridInput(scene) {
+    const canvas = DB.gameCanvas || scene.sys.game.canvas;
+    if (canvas) {
+        canvas.style.touchAction = "none";
+        canvas.addEventListener("pointerdown", handleCanvasPointerDown);
+        canvas.addEventListener("pointermove", handleCanvasPointerMove);
+        canvas.addEventListener("pointerup", handleCanvasPointerUp);
+        canvas.addEventListener("pointercancel", handleCanvasPointerUp);
+    }
+
     scene.input.on("pointerdown", pointer => {
         if (state.phase !== GamePhase.PREP) {
             return;
         }
+        if (Object.keys(DB.pinchPointers).length >= 2) {
+            return;
+        }
+        if (DB.isDragging) {
+            return;
+        }
         const x = pointer.x;
         const y = pointer.y;
+        const clickedUnit = state.deployed.find(unit => {
+            const bounds = unit.sprite.getBounds();
+            return bounds.contains(x, y);
+        });
+        if (clickedUnit) {
+            startUnitMove(clickedUnit, pointer);
+            return;
+        }
         const col = Math.floor((x - DB.gridOffsetX) / DB.gridSize);
         const row = Math.floor((y - DB.gridOffsetY) / DB.gridSize);
         if (col < 0 || col >= DB.gridCols || row < 0 || row >= DB.gridRows) {
             return;
         }
-        deploySelectedUnit(col, row, scene);
+        const selectedCard = state.hand[state.selectedHandIndex];
+        if (selectedCard && selectedCard.type === "operator") {
+            deploySelectedUnit(col, row, scene);
+        }
     });
+}
+
+function handleCanvasPointerDown(event) {
+    if (event.pointerType !== "touch") {
+        return;
+    }
+    DB.pinchPointers[event.pointerId] = { x: event.clientX, y: event.clientY };
+    if (Object.keys(DB.pinchPointers).length === 2) {
+        const points = Object.values(DB.pinchPointers);
+        DB.pinchStartDistance = getDistance(points[0], points[1]);
+        DB.pinchStartZoom = DB.currentScene.cameras.main.zoom;
+    }
+}
+
+function handleCanvasPointerMove(event) {
+    if (event.pointerType !== "touch") {
+        return;
+    }
+    if (!(event.pointerId in DB.pinchPointers)) {
+        return;
+    }
+    DB.pinchPointers[event.pointerId] = { x: event.clientX, y: event.clientY };
+    if (Object.keys(DB.pinchPointers).length === 2) {
+        updatePinchZoom();
+    }
+}
+
+function handleCanvasPointerUp(event) {
+    if (event.pointerType !== "touch") {
+        return;
+    }
+    delete DB.pinchPointers[event.pointerId];
+    if (Object.keys(DB.pinchPointers).length < 2) {
+        DB.pinchStartDistance = null;
+    }
+}
+
+function updatePinchZoom() {
+    const pointers = Object.values(DB.pinchPointers);
+    if (pointers.length !== 2 || DB.pinchStartDistance == null) {
+        return;
+    }
+    const distance = getDistance(pointers[0], pointers[1]);
+    const ratio = distance / DB.pinchStartDistance;
+    const camera = DB.currentScene.cameras.main;
+    const newZoom = Phaser.Math.Clamp(DB.pinchStartZoom * ratio, DB.minZoom, DB.maxZoom);
+    camera.setZoom(newZoom);
+}
+
+function getDistance(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
 }
 
 function preload() {
@@ -798,7 +1103,7 @@ function preload() {
         const canvas = document.createElement("canvas");
         canvas.width = 144;
         canvas.height = 144;
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         jdenticon.drawIcon(ctx, op.name, 144);
         const colorThief = new ColorThief();
         op.color = colorThief.getColor(canvas, 8);
@@ -913,16 +1218,20 @@ function createRangeGraphics(scene, sprite) {
 }
 
 function create() {
+    DB.currentScene = this;
+    DB.gameCanvas = this.sys.game.canvas;
+    DB.gameWidth = this.sys.game.config.width;
+    DB.gameHeight = this.sys.game.config.height;
     DB.gridSize = Math.floor(
         Math.min(
-            this.sys.game.config.width / DB.gridCols,
-            this.sys.game.config.height / DB.gridRows
+            DB.gameWidth / DB.gridCols,
+            DB.gameHeight / DB.gridRows
         )
     );
     DB.worldWidth = DB.gridCols * DB.gridSize;
     DB.worldHeight = DB.gridRows * DB.gridSize;
-    DB.gridOffsetX = (this.sys.game.config.width - DB.worldWidth) / 2;
-    DB.gridOffsetY = (this.sys.game.config.height - DB.worldHeight) / 2;
+    DB.gridOffsetX = (DB.gameWidth - DB.worldWidth) / 2;
+    DB.gridOffsetY = (DB.gameHeight - DB.worldHeight) / 2;
     this.physics.world.setBounds(
         DB.gridOffsetX,
         DB.gridOffsetY,
@@ -930,6 +1239,7 @@ function create() {
         DB.worldHeight
     );
     drawGridLines(this);
+    initCamera(this);
     initUI(this);
     updatePhaseUI();
     buildStatusText();

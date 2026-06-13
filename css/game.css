@@ -43,7 +43,7 @@
     position: absolute;
     top: 12px;
     left: 12px;
-    right: 12px;
+    right: 90px;
     padding: 10px 14px;
     gap: 10px;
     border-radius: 18px;
@@ -95,8 +95,39 @@
     pointer-events: auto;
 }
 
-.hand-panel {
+.unit-info {
     position: absolute;
+    top: 132px;
+    left: 12px;
+    right: 12px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    background: rgba(6, 16, 36, 0.84);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #d0e8ff;
+    font-size: 12px;
+    pointer-events: auto;
+    z-index: 22;
+}
+
+.drag-preview {
+    position: absolute;
+    pointer-events: none;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    background: rgba(10, 18, 45, 0.85);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: #fff;
+    z-index: 40;
+}
+
+.hand-panel {
     bottom: 16px;
     left: 12px;
     right: 12px;
@@ -145,7 +176,7 @@
 
 .shop-toggle {
     position: absolute;
-    top: 18px;
+    top: 84px;
     right: 18px;
     width: 52px;
     height: 52px;
